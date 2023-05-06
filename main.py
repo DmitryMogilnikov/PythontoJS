@@ -5,7 +5,8 @@ from Python3Visitor import Python3Visitor
 
 class PythonToJavaScriptVisitor(Python3Visitor):
     def __init__(self):
-        self.indent = 0
+        self.indent_count = 0
+        self.indent = "    "
     
     def visitFile_input(self, ctx):
         # Generate code for the entire file
@@ -18,7 +19,7 @@ class PythonToJavaScriptVisitor(Python3Visitor):
     
     def visitFuncdef(self, ctx):
         # Generate code for a function definition
-        self.indent += 1
+        self.indent_count += 1
         name = ctx.NAME().getText()
         params = self.visit(ctx.parameters())
         if not params:
@@ -54,8 +55,10 @@ class PythonToJavaScriptVisitor(Python3Visitor):
         # Generate code for a simple statement
         code = ""
         for child in ctx.getChildren():
-            code += child.getText()
-        return code + ";\n"
+            tmp_code = child.getText()
+            tmp_code = tmp_code.replace("print", "console.log")
+            code += tmp_code
+        return self.indent_count * self.indent + code + ";\n"
 
     def visitExpr_stmt(self, ctx):
         # Generate code for an expression statement
@@ -83,7 +86,8 @@ class PythonToJavaScriptVisitor(Python3Visitor):
     
     def visitIf_stmt(self, ctx):
         # Generate code for an if statement
-        code = "if ("
+        code = self.indent * self.indent_count + "if ("
+        self.indent_count += 1
         tests = ctx.test()
         for i, test in enumerate(tests):
             code += self.visit(test)
@@ -91,20 +95,25 @@ class PythonToJavaScriptVisitor(Python3Visitor):
                 code += " && "
         code += ") {\n"
         code += self.visit(ctx.suite(0))
-        code += "}\n"
+        self.indent_count -= 1
+        code += self.indent * self.indent_count + "}\n"
         if ctx.ELSE():
-            code += "else {\n"
+            code += self.indent * self.indent_count + "else {\n"
+            self.indent_count += 1
             code += self.visit(ctx.suite(1))
-            code += "}\n"
+            self.indent_count -= 1
+            code += self.indent * self.indent_count + "}\n"
         return code
     
     def visitWhile_stmt(self, ctx):
     # Generate code for a while loop
         condition = self.visit(ctx.test())
-        code = f"while ({condition}) {{\n"
+        code = self.indent * self.indent_count + f"while ({condition}) {{\n"
+        self.indent_count += 1
         for stmt in ctx.suite():
             code += self.visit(stmt)
-        code += "}\n"
+        self.indent_count -= 1
+        code += self.indent * self.indent_count + "}\n"
         return code
     
     def visitTestlist(self, ctx:Python3Parser.TestlistContext):
@@ -121,12 +130,14 @@ class PythonToJavaScriptVisitor(Python3Visitor):
         iterable = [int(x) for x in iterable.split(",")]
 
         if len(iterable) == 1:
-            code = f"for (let {target} of {iterable[0]}) {{\n"
+            code = self.indent * self.indent_count + f"for (let {target} of {iterable[0]}) {{\n"
         else:
-            code = "for (let i = {0}; i < {1}; i + {2}){{\n".format(*iterable)
+            code = self.indent * self.indent_count + "for (let i = {0}; i < {1}; i + {2}){{\n".format(*iterable)
+        self.indent_count += 1
         for stmt in ctx.suite():
             code += self.visit(stmt)
-        code += "}\n"
+        self.indent_count -= 1
+        code += self.indent * self.indent_count + "}\n"
         return code
     
     def visitComp_op(self, ctx:Python3Parser.Comp_opContext):
@@ -163,10 +174,11 @@ class PythonToJavaScriptVisitor(Python3Visitor):
 if __name__ == '__main__':
     with open("code/code.py", "r+") as f:
         code = f.read()
-    print(code)
     lexer = Python3Lexer(InputStream(code))
     parser = Python3Parser(CommonTokenStream(lexer))
     tree = parser.file_input()
     visitor = PythonToJavaScriptVisitor()
     js_code = visitor.visit(tree)
-    print(js_code.replace("\n;", ";"))
+    js_code = js_code.replace("\n;", ";")
+    with open("code/code.js", "w+") as f:
+        f.write(js_code)
